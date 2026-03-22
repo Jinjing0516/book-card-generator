@@ -40,6 +40,34 @@ regenerateBtn.addEventListener('click', handleRegenerate);
 downloadInfoBtn.addEventListener('click', downloadInfoCard);
 downloadQuoteBtn.addEventListener('click', downloadQuoteCard);
 
+// 封面上传预览
+document.getElementById('coverImage').addEventListener('change', handleCoverUpload);
+
+function handleCoverUpload(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  
+  // 预览
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    document.getElementById('coverPreview').classList.remove('hidden');
+    document.getElementById('previewImg').src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+// 从用户上传文件读取封面
+async function getUserCoverImage(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      resolve(e.target.result);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
 // 主生成流程
 async function handleGenerate(e) {
   e.preventDefault();
@@ -47,9 +75,10 @@ async function handleGenerate(e) {
   const title = document.getElementById('bookTitle').value.trim();
   const subtitle = document.getElementById('bookSubtitle').value.trim();
   const author = document.getElementById('author').value.trim();
+  const coverFile = document.getElementById('coverImage').files[0];
   
   if (!title || !subtitle || !author) {
-    alert('请填写所有必填项');
+    alert('请填写书名、副标题、作者所有必填项');
     return;
   }
   
@@ -61,36 +90,50 @@ async function handleGenerate(e) {
     progressContainer.classList.remove('hidden');
     generateBtn.disabled = true;
     
-    // 步骤1: 搜索图书
-    updateProgress(10, '正在搜索图书...');
-    const bookInfo = await bookSearch.searchBook(title, author);
-    console.log('搜索到图书:', bookInfo);
+    let coverUrl;
+    let bookDescription = '';
     
-    if (!bookInfo.coverUrl) {
-      throw new Error('未找到图书封面，请手动确认书名是否正确');
+    // 判断是否用户手动上传了封面
+    if (coverFile) {
+      // 用户手动上传
+      updateProgress(20, '正在处理封面图片...');
+      coverUrl = await getUserCoverImage(coverFile);
+      // 用户手动上传，使用书名作者生成描述
+      bookDescription = `${title} ${author}`;
+    } else {
+      // 自动搜索
+      updateProgress(10, '正在搜索图书...');
+      const bookInfo = await bookSearch.searchBook(title, author);
+      console.log('搜索到图书:', bookInfo);
+      
+      if (!bookInfo.coverUrl) {
+        throw new Error('未找到图书封面，请手动上传封面图片');
+      }
+      
+      // 使用代理解决CORS
+      coverUrl = bookSearch.proxyImageUrl(bookInfo.coverUrl);
+      bookDescription = bookInfo.description || '';
     }
     
-    // 使用代理解决CORS
-    const proxiedCoverUrl = bookSearch.proxyImageUrl(bookInfo.coverUrl);
-    appState.coverUrl = proxiedCoverUrl;
+    appState.coverUrl = coverUrl;
     
     // 步骤2: 提取配色
     updateProgress(30, '正在分析封面配色...');
-    const { dominant } = await colorGenerator.extractColors(proxiedCoverUrl);
+    const { dominant } = await colorGenerator.extractColors(coverUrl);
     const colorScheme = colorGenerator.generateScheme(dominant, 0);
     appState.currentColors = colorScheme;
     console.log('生成配色:', colorScheme);
     
     // 步骤3: 生成内容
     updateProgress(60, '正在生成小红书内容...');
-    const content = contentGenerator.generate(title, subtitle, author, bookInfo.description);
+    const content = contentGenerator.generate(title, subtitle, author, bookDescription);
     appState.currentContent = content;
     console.log('生成内容:', content);
     
     // 步骤4: 生成HTML
     updateProgress(80, '正在渲染卡片...');
-    const infoHtml = cardTemplates.generateInfoCard(content, colorScheme, proxiedCoverUrl);
-    const quoteHtml = cardTemplates.generateQuoteCard(content, colorScheme, proxiedCoverUrl);
+    const infoHtml = cardTemplates.generateInfoCard(content, colorScheme, coverUrl);
+    const quoteHtml = cardTemplates.generateQuoteCard(content, colorScheme, coverUrl);
     appState.infoCardHtml = infoHtml;
     appState.quoteCardHtml = quoteHtml;
     
@@ -108,7 +151,7 @@ async function handleGenerate(e) {
     
   } catch (error) {
     console.error('生成失败:', error);
-    alert(`生成失败: ${error.message}`);
+    alert(`生成失败: ${error.message}\n\n如果自动搜索不到封面，请手动上传封面图片`);
     progressContainer.classList.add('hidden');
     generateBtn.disabled = false;
   }
