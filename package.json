@@ -1,0 +1,12 @@
+{
+  "name": "book-card-generator",
+  "version": "1.0.0",
+  "description": "小红书风格读书卡片生成器 - 一键生成信息卡和金句卡",
+  "main": "index.html",
+  "scripts": {
+    "start": "npx serve ."
+  },
+  "keywords": ["book", "card", "xiaohongshu", "generator"],
+  "author": "",
+  "license": "MIT"
+}
