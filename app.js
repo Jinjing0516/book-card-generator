@@ -12,7 +12,6 @@ let appState = {
 };
 
 // 初始化模块
-const bookSearch = new window.BookSearch();
 const colorGenerator = new window.ColorGenerator();
 const contentGenerator = new window.ContentGenerator();
 const cardTemplates = new window.CardTemplates();
@@ -77,8 +76,8 @@ async function handleGenerate(e) {
   const author = document.getElementById('author').value.trim();
   const coverFile = document.getElementById('coverImage').files[0];
   
-  if (!title || !subtitle || !author) {
-    alert('请填写书名、副标题、作者所有必填项');
+  if (!title || !subtitle || !author || !coverFile) {
+    alert('请填写所有必填项（书名、副标题、作者、封面图片）');
     return;
   }
   
@@ -90,31 +89,9 @@ async function handleGenerate(e) {
     progressContainer.classList.remove('hidden');
     generateBtn.disabled = true;
     
-    let coverUrl;
-    let bookDescription = '';
-    
-    // 判断是否用户手动上传了封面
-    if (coverFile) {
-      // 用户手动上传
-      updateProgress(20, '正在处理封面图片...');
-      coverUrl = await getUserCoverImage(coverFile);
-      // 用户手动上传，使用书名作者生成描述
-      bookDescription = `${title} ${author}`;
-    } else {
-      // 自动搜索
-      updateProgress(10, '正在搜索图书...');
-      const bookInfo = await bookSearch.searchBook(title, author);
-      console.log('搜索到图书:', bookInfo);
-      
-      if (!bookInfo.coverUrl) {
-        throw new Error('未找到图书封面，请手动上传封面图片');
-      }
-      
-      // 使用代理解决CORS
-      coverUrl = bookSearch.proxyImageUrl(bookInfo.coverUrl);
-      bookDescription = bookInfo.description || '';
-    }
-    
+    // 步骤1: 读取用户上传封面
+    updateProgress(20, '正在处理封面图片...');
+    const coverUrl = await getUserCoverImage(coverFile);
     appState.coverUrl = coverUrl;
     
     // 步骤2: 提取配色
@@ -126,7 +103,7 @@ async function handleGenerate(e) {
     
     // 步骤3: 生成内容
     updateProgress(60, '正在生成小红书内容...');
-    const content = contentGenerator.generate(title, subtitle, author, bookDescription);
+    const content = contentGenerator.generate(title, subtitle, author, `${title} ${subtitle} ${author}`);
     appState.currentContent = content;
     console.log('生成内容:', content);
     
@@ -151,7 +128,7 @@ async function handleGenerate(e) {
     
   } catch (error) {
     console.error('生成失败:', error);
-    alert(`生成失败: ${error.message}\n\n如果自动搜索不到封面，请手动上传封面图片`);
+    alert(`生成失败: ${error.message}`);
     progressContainer.classList.add('hidden');
     generateBtn.disabled = false;
   }
@@ -169,7 +146,6 @@ async function handleRegenerate() {
     
     // 重新生成配色，增加随机种子
     appState.generation++;
-    const bookTitle = document.getElementById('bookTitle').value.trim();
     // 重新提取主色但加入随机扰动
     const { dominant } = await colorGenerator.extractColors(appState.coverUrl);
     const colorScheme = colorGenerator.generateScheme(dominant, appState.generation);
